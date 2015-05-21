@@ -3,9 +3,12 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 
 	"github.com/garyburd/redigo/redis"
+	"github.com/soveran/redisurl"
 	"github.com/zenazn/goji"
 	"github.com/zenazn/goji/web"
 )
@@ -21,22 +24,27 @@ func get(c web.C, w http.ResponseWriter, r *http.Request) {
 }
 func save(c web.C, w http.ResponseWriter, r *http.Request) {
 	// save
-	redis_conn, err := redis.Dial("tcp", "127.0.0.1:6379")
+	if os.Getenv("REDISTOGO_URL") == "" {
+		os.Setenv("REDISTOGO_URL", "redis://127.0.0.1:6379/")
+	}
+	os.Setenv("REDIS_URL", os.Getenv("REDISTOGO_URL"))
+	redisConn, err := redisurl.Connect()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer redis_conn.Close()
-	key := "nasu:" + c.URLParams["word"]
-	val, err := redis.Int(redis_conn.Do("GET", key))
+	defer redisConn.Close()
+	word := strings.Trim(strings.ToLower(c.URLParams["word"]), " .,!?")
+	key := "nasu:" + word
+	val, err := redis.Int(redisConn.Do("GET", key))
 	if err != nil {
 		val = 0
 	}
-	redis_conn.Do("SET", key, val+1)
+	redisConn.Do("SET", key, val+1)
 
 	// response
 	res, err := json.Marshal(map[string]string{
-		"word": c.URLParams["word"],
+		"word": word,
 		"cnt":  strconv.Itoa(val + 1),
 	})
 	if err != nil {
